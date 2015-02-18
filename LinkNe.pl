@@ -5,6 +5,10 @@ use Getopt::Long;
 use Pod::Usage;
 use Statistics::Distributions;
 
+my $version = '1.0.0';
+
+my $command = 'LinkNe.pl ' . join(" ", @ARGV), "\n";
+
 pod2usage(-verbose => 1) if @ARGV == 0;
 
 my $infile = '';
@@ -12,26 +16,31 @@ my $outfile = 'Ne.out';
 my $matfile = '';
 my $binsize = 0.05;
 my $allele_cutoff = 0.05;
-my $correct_bias = '';
+my $no_bias_corr = '';
 my $moving_avg = 'Ne_moving_avg.out';
 my $window_size = 0.05;
 my $interval = 0.01;
 my $save_data = '';
 my $reanalyze = '';
+my $opt_version = '';
 
 GetOptions(	'infile|i=s' => \$infile,
 			'outfile|o=s' => \$outfile,
 			'matfile|m=s' => \$matfile,
 			'bins|b=s' => \$binsize,
 			'allele_cutoff|a=s' => \$allele_cutoff,
-			'correct_bias|c' => \$correct_bias,
+			'no_bias_corr|c' => \$no_bias_corr,
 			'moving_avg|v=s' => \$moving_avg,
 			'window|w=s' => \$window_size,
 			'interval|n=s' => \$interval,
 			'save|s' => \$save_data,
 			'reanalyze|r' => \$reanalyze,
+			'version' => \$opt_version,
 );
 
+if ($opt_version) {
+	die "Version ",  $version, "\n";
+}
 
 if ($reanalyze) {
 	reanalyze($infile, $window_size, $interval, $outfile);
@@ -39,7 +48,7 @@ if ($reanalyze) {
 
 
 open(OUT, ">", $outfile) or die $!;
-open(DUMP, ">", 'dumper.out') or die $!;
+#open(DUMP, ">", 'dumper.out') or die $!;
 open(R2, ">", $outfile . '.R2.log') or die $!;
 
 
@@ -192,7 +201,7 @@ foreach my $pop (@{$pops}) {
 			
 			
 			if (scalar(keys %{$allele_freqs{$pair[0]}}) < 2 || scalar(keys %{$allele_freqs{$pair[1]}}) < 2) {
-				print DUMP "Skipping pair: $pair[0] $pair[1]\n";
+				#print DUMP "Skipping pair: $pair[0] $pair[1]\n";
 				next;
 			}
 			
@@ -270,9 +279,33 @@ foreach my $pop (@{$pops}) {
 					#print DUMP "nij: $nij\n";
 					#print DUMP "Sij: $Sij\n";
 					
+				
 					my $D_hat = ($shared_n / ($shared_n - 1)) * (($hets / $shared_n) - (2 * $p * $q));
 					
-					my $r = $D_hat / ( sqrt( (($p*(1-$p))+($hi-$p**2)) * (($q*(1-$q))+($hj-$q**2)) ) );
+					
+					# This equation causes a division by zero error under certain circumstances (such as when an allele frequency
+					# is exactly 0.5 and there are no corresponding homozygotes). This happens sometimes with small sample sizes.
+					# This traps the error and skips the allele pair
+					
+					my $r;
+					eval { $r = $D_hat / ( sqrt( (($p*(1-$p))+($hi-$p**2)) * (($q*(1-$q))+($hj-$q**2)) ) ) };
+					
+					next if $@;
+					
+					# if ($@) {
+						
+						# print DUMP "$pair[0] $pair[1]\n";
+						# print DUMP "$alleles1[$i] $alleles2[$j]\n";
+						# print DUMP "Hets: $hets\n";
+						# print DUMP "n: $shared_n\n";
+						# print DUMP "p: $p\n";
+						# print DUMP "q: $q\n";
+						# print DUMP "hi: $hi\n";
+						# print DUMP "hj: $hj\n";
+						# print DUMP "nij: $nij\n";
+						# print DUMP "Sij: $Sij\n";
+
+					# }
 					my $r_sq = $r**2;
 					
 					#print DUMP "D: $D_hat\n";
@@ -280,7 +313,7 @@ foreach my $pop (@{$pops}) {
 					#print DUMP "r^2: $r_sq\n";
 					
 					my $exp_rsq;
-					if ($correct_bias) {
+					unless ($no_bias_corr) {
 						if ($Sij >= 30) {
 							$exp_rsq = (1 / $Sij) + (3.19 / $Sij**2);
 						} else {
@@ -296,6 +329,7 @@ foreach my $pop (@{$pops}) {
 					
 				}
 			}
+			next if scalar(@burrows) == 0;
 			
 			# Calculate the means for the locus pair
 			
@@ -326,6 +360,7 @@ foreach my $pop (@{$pops}) {
 						push @{$bins[$g][2]}, $nij;
 						push @{$bins[$g][3]}, $Sij;
 						push @{$bins[$g][4]}, $wij;
+						push @{$bins[$g][5]}, $c;
 						$binned++;
 						$binable = 1;
 						print R2 join("\t", $pair[0], $pair[1], $c, $mean_loc_rsq - $mean_loc_exp_rsq), "\n";
@@ -337,8 +372,8 @@ foreach my $pop (@{$pops}) {
 			}
 			
 			if ($binable == 0) {
-				print DUMP "Unable to bin: $pair[0], $pair[1]\n";
-				print DUMP "c: $c\n";
+				#print DUMP "Unable to bin: $pair[0], $pair[1]\n";
+				#print DUMP "c: $c\n";
 				die;
 			}
 			
@@ -352,9 +387,9 @@ foreach my $pop (@{$pops}) {
 	# Calculate the Ne for each bin
 	
 	# i indexes the bin, j indexes locus pair within the bin
-	
+	open(CVAL, ">", 'cvalues.txt');
 	for(my $i = 0; $i < scalar(@bins); $i++) {
-	
+		print CVAL "BIN\n";
 		# Calculate N (total independent comparisons) and S (weighted harmonic mean of sample size) for each bin
 		my $N;
 		my $N_over_S;
@@ -373,6 +408,7 @@ foreach my $pop (@{$pops}) {
 		my $total_W;
 		my $total_weighted_r_sq;
 		my $total_weighted_exp_r_sq;
+		my $total_c;
 
 		for(my $j = 0; $j < scalar(@{$bins[$i][0]}); $j++) {
 			my $product = $bins[$i][4][$j] * $bins[$i][0][$j]; # Mean locus r_sq * corresponding wij
@@ -382,12 +418,15 @@ foreach my $pop (@{$pops}) {
 			$total_weighted_exp_r_sq += $exp_product; # Add the product to the total weighted exp_r_sq
 			
 			$total_W += $bins[$i][4][$j]; # Add the wij to the total W
+			$total_c += $bins[$i][5][$j]; # Add the cij to the total c
+			print CVAL $bins[$i][5][$j], "\n";
 		}
 		#print join("\n", @wijs), "\n";
 		#print join("\n", @exp_rsqs), "\n";
 		
 		my $mean_exp_r_sq = $total_weighted_exp_r_sq / $total_W;
 		my $mean_r_sq = $total_weighted_r_sq / $total_W;
+		my $mean_c = $total_c / scalar(@{$bins[$i][0]});
 		#print DUMP join("\t", 'r^2', $mean_r_sq), "\n";
 		
 		my $r_sq_drift = $mean_r_sq - $mean_exp_r_sq;
@@ -395,6 +434,7 @@ foreach my $pop (@{$pops}) {
 		
 		# Calculate a gamma value for the bin, where c is the midpoint of the bin
 		my $gamma = ((1 - $bin_means[$i])**2 + $bin_means[$i]**2) / (2 * $bin_means[$i] * (2 - $bin_means[$i]));
+		#my $gamma = ((1 - $mean_c)**2 + $mean_c**2) / (2 * $mean_c * (2 - $mean_c));
 		
 		# From Hill 1981 / Waples 2006
 		my $Ne = ($gamma / $r_sq_drift);
@@ -421,7 +461,7 @@ foreach my $pop (@{$pops}) {
 		my $rough_low = $Ne - (2 * $SD);
 		my $rough_high = $Ne + (2 * $SD);
 		
-		print OUT join("\t", $bin_means[$i], $Ne, $Ne_low, $Ne_high, scalar(@{$bins[$i][0]}), $S, $CV, $rough_low, $rough_high, $mean_r_sq, $mean_exp_r_sq, $r_sq_drift, $r_sq_drift_low, $r_sq_drift_high), "\n";
+		print OUT join("\t", $mean_c, $Ne, $Ne_low, $Ne_high, scalar(@{$bins[$i][0]}), $S, $CV, $rough_low, $rough_high, $mean_r_sq, $mean_exp_r_sq, $r_sq_drift, $r_sq_drift_low, $r_sq_drift_high), "\n";
 		
 	}
 	
@@ -745,7 +785,7 @@ sub reanalyze {
 	my $out_file = $_[3];
 	
 	open(IN, "<", $file) or die $!;
-	open(TEST, ">", 'pairs.txt');
+	#open(TEST, ">", 'pairs.txt');
 	
 	my @all_data;
 	while(<IN>) {
@@ -756,7 +796,7 @@ sub reanalyze {
 	}
 	close IN;
 	print "Finished reading data\n";
-	print TEST Dumper(\@all_data);
+	#print TEST Dumper(\@all_data);
 	calc_moving_avg(\@all_data, $window_size, $interval, $out_file);
 	
 	die "Finished reanalyzing data\n";
