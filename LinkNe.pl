@@ -5,7 +5,7 @@ use Getopt::Long;
 use Pod::Usage;
 use Statistics::Distributions;
 
-my $version = '1.0.0';
+my $version = '1.0.1';
 
 my $command = 'LinkNe.pl ' . join(" ", @ARGV);
 
