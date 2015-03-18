@@ -7,7 +7,7 @@ use Statistics::Distributions;
 
 my $version = '1.0.0';
 
-my $command = 'LinkNe.pl ' . join(" ", @ARGV), "\n";
+my $command = 'LinkNe.pl ' . join(" ", @ARGV);
 
 pod2usage(-verbose => 1) if @ARGV == 0;
 
@@ -23,6 +23,8 @@ my $interval = 0.01;
 my $save_data = '';
 my $reanalyze = '';
 my $opt_version = '';
+my $debug = '';
+my $cval = '';
 
 GetOptions(	'infile|i=s' => \$infile,
 			'outfile|o=s' => \$outfile,
@@ -36,6 +38,8 @@ GetOptions(	'infile|i=s' => \$infile,
 			'save|s' => \$save_data,
 			'reanalyze|r' => \$reanalyze,
 			'version' => \$opt_version,
+			'debug' => \$debug,
+			'cval|l=s' => \$cval,
 );
 
 if ($opt_version) {
@@ -48,9 +52,12 @@ if ($reanalyze) {
 
 
 open(OUT, ">", $outfile) or die $!;
-#open(DUMP, ">", 'dumper.out') or die $!;
 open(R2, ">", $outfile . '.R2.log') or die $!;
+open(LOG, ">", $outfile . '.log') or die $!;
 
+if ($debug) {
+	open(DUMP, ">", 'dumper.out') or die $!;
+}
 
 print R2 join("\t", "loc1", "loc2", "c", "r2"), "\n";
 
@@ -133,6 +140,7 @@ foreach my $pop (@{$pops}) {
 		foreach my $allele (keys %{$freq}) {
 			if ($freq->{$allele} < $allele_cutoff) {
 				$exclude{$locus}{$allele} = 1;
+				next;
 			}
 			$freqs{$locus}{$allele} = $freq->{$allele};
 		}
@@ -141,7 +149,7 @@ foreach my $pop (@{$pops}) {
 		$sample_size{$locus} = $locus_n;
 		
 		#print DUMP "Filtered freqs\n";
-		#print DUMP Dumper(\%freqs);
+		print DUMP Dumper(\%freqs) if $debug;
 		
 		push @filt_loci, $locus unless scalar(keys %{$freqs{$locus}}) == 1;
 	}
@@ -155,6 +163,7 @@ foreach my $pop (@{$pops}) {
 	
 	my $total_loci = scalar(@filt_loci);
 	print "$total_loci loci to test\n";
+	print LOG "Total Loci: $total_loci\n";
 	# Iterate through each pair of loci
 	my $pairwise = 0;
 	my $binned = 0;
@@ -167,7 +176,7 @@ foreach my $pop (@{$pops}) {
 			my @burrows;
 			
 			my @pair = ($filt_loci[$y], $filt_loci[$z]);
-			
+			print DUMP join("\t", @pair), "\n" if $debug;
 			# Look up the recombination frequency for the locus pair
 			
 			my $c = $rec_matrix[$mat_index{$pair[0]}][$mat_index{$pair[1]}];
@@ -205,7 +214,7 @@ foreach my $pop (@{$pops}) {
 				next;
 			}
 			
-			#print DUMP Dumper(\%allele_freqs);
+			print DUMP Dumper(\%allele_freqs) if $debug;
 				
 			my $loc1_n = $sample_size{$pair[0]};
 			my $loc2_n = $sample_size{$pair[1]};
@@ -220,7 +229,7 @@ foreach my $pop (@{$pops}) {
 			
 			for(my $i = 0; $i < scalar(@alleles1); $i++) {
 				if ($exclude{$filt_loci[$y]}{$alleles1[$i]}) {
-					#print "Excluded ", $filt_loci[$y], ' ', $alleles1[$i], "\n";
+					print LOG "Excluded ", $filt_loci[$y], ' ', $alleles1[$i], "\n";
 					next;
 				}
 				for(my $j = 0; $j < scalar(@alleles2); $j++) {
@@ -269,16 +278,17 @@ foreach my $pop (@{$pops}) {
 					my $p = $allele_counts->{$pair[0]}{$alleles1[$i]} / (2 * $shared_n);
 					my $q = $allele_counts->{$pair[1]}{$alleles2[$j]} / (2 * $shared_n);
 					
-					#print DUMP "$alleles1[$i] $alleles2[$j]\n";
-					#print DUMP "Hets: $hets\n";
-					#print DUMP "n: $shared_n\n";
-					#print DUMP "p: $p\n";
-					#print DUMP "q: $q\n";
-					#print DUMP "hi: $hi\n";
-					#print DUMP "hj: $hj\n";
-					#print DUMP "nij: $nij\n";
-					#print DUMP "Sij: $Sij\n";
-					
+					if ($debug) {
+						print DUMP "$alleles1[$i] $alleles2[$j]\n";
+						print DUMP "Hets: $hets\n";
+						print DUMP "n: $shared_n\n";
+						print DUMP "p: $p\n";
+						print DUMP "q: $q\n";
+						print DUMP "hi: $hi\n";
+						print DUMP "hj: $hj\n";
+						print DUMP "nij: $nij\n";
+						print DUMP "Sij: $Sij\n";
+					}
 				
 					my $D_hat = ($shared_n / ($shared_n - 1)) * (($hets / $shared_n) - (2 * $p * $q));
 					
@@ -308,9 +318,11 @@ foreach my $pop (@{$pops}) {
 					# }
 					my $r_sq = $r**2;
 					
-					#print DUMP "D: $D_hat\n";
-					#print DUMP "r: $r\n";
-					#print DUMP "r^2: $r_sq\n";
+					if ($debug) {	
+						print DUMP "D: $D_hat\n";
+						print DUMP "r: $r\n";
+						print DUMP "r^2: $r_sq\n";
+					}
 					
 					my $exp_rsq;
 					unless ($no_bias_corr) {
@@ -431,10 +443,17 @@ foreach my $pop (@{$pops}) {
 		
 		my $r_sq_drift = $mean_r_sq - $mean_exp_r_sq;
 		
+		my $midpoint_c = $bin_means[$i];
 		
-		# Calculate a gamma value for the bin, where c is the midpoint of the bin
-		my $gamma = ((1 - $bin_means[$i])**2 + $bin_means[$i]**2) / (2 * $bin_means[$i] * (2 - $bin_means[$i]));
-		#my $gamma = ((1 - $mean_c)**2 + $mean_c**2) / (2 * $mean_c * (2 - $mean_c));
+		# Calculate a gamma value for the bin, where c is the midpoint or mean of the bin
+		my $gamma;
+		if ($cval eq 'mean') {
+			$gamma = ((1 - $mean_c)**2 + $mean_c**2) / (2 * $mean_c * (2 - $mean_c));
+		} elsif ($cval eq 'midpoint') {
+			$gamma = ((1 - $midpoint_c)**2 + $midpoint_c**2) / (2 * $midpoint_c * (2 - $midpoint_c));
+		} else {
+			die 'Need to specify a cval method';
+		}
 		
 		# From Hill 1981 / Waples 2006
 		my $Ne = ($gamma / $r_sq_drift);
@@ -461,7 +480,8 @@ foreach my $pop (@{$pops}) {
 		my $rough_low = $Ne - (2 * $SD);
 		my $rough_high = $Ne + (2 * $SD);
 		
-		print OUT join("\t", $mean_c, $Ne, $Ne_low, $Ne_high, scalar(@{$bins[$i][0]}), $S, $CV, $rough_low, $rough_high, $mean_r_sq, $mean_exp_r_sq, $r_sq_drift, $r_sq_drift_low, $r_sq_drift_high), "\n";
+		print OUT join("\t", $midpoint_c, $mean_c, $Ne, $Ne_low, $Ne_high, scalar(@{$bins[$i][0]}), $S, $CV, $rough_low, $rough_high, $mean_r_sq, $mean_exp_r_sq, $r_sq_drift, $r_sq_drift_low, $r_sq_drift_high), "\n";
+		#print OUT join("\t", $mean_c, $Ne, $Ne_low, $Ne_high, scalar(@{$bins[$i][0]}), $S, $CV, $rough_low, $rough_high, $mean_r_sq, $mean_exp_r_sq, $r_sq_drift, $r_sq_drift_low, $r_sq_drift_high), "\n";
 		
 	}
 	
@@ -722,7 +742,8 @@ sub calc_moving_avg {
 		my $total_W;
 		my $total_weighted_r_sq;
 		my $total_weighted_exp_r_sq;
-
+		my $total_c;
+		
 		foreach my $pair (@bin) {
 			my $product = $pair->[0] * $pair->[4]; # Mean locus r_sq * corresponding wij
 			$total_weighted_r_sq += $product; # Add the product to the total weighted r_sq
@@ -731,6 +752,7 @@ sub calc_moving_avg {
 			$total_weighted_exp_r_sq += $exp_product; # Add the product to the total weighted exp_r_sq
 			
 			$total_W += $pair->[4]; # Add the wij to the total W
+			$total_c += $pair->[5]; # Add the cij to the total c
 		}
 		
 		
@@ -741,10 +763,19 @@ sub calc_moving_avg {
 		my $r_sq_drift = $mean_r_sq - $mean_exp_r_sq;
 		
 		my $midpoint = ($max + $min) / 2;
-		
+		my $mean_c = $total_c / scalar(@bin);
 		
 		# Calculate a gamma value for the bin, where c is the midpoint of the bin
-		my $gamma = ((1 - $midpoint)**2 + $midpoint**2) / (2 * $midpoint * (2 - $midpoint)); 
+		#my $gamma = ((1 - $midpoint)**2 + $midpoint**2) / (2 * $midpoint * (2 - $midpoint)); 
+		
+		my $gamma;
+		if ($cval eq 'mean') {
+			$gamma = ((1 - $mean_c)**2 + $mean_c**2) / (2 * $mean_c * (2 - $mean_c));
+		} elsif ($cval eq 'midpoint') {
+			$gamma = ((1 - $midpoint)**2 + $midpoint**2) / (2 * $midpoint * (2 - $midpoint));
+		} else {
+			die 'Need to specify a cval method';
+		}
 		
 		# From Hill 1981 / Waples 2006
 		my $Ne = ($gamma / $r_sq_drift); 
