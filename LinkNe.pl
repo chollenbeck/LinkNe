@@ -788,7 +788,7 @@ sub calc_moving_avg {
 		my $rough_high = $Ne + (2 * $SD);
 		
 		#print MAVG join("\t", $midpoint, $Ne), "\n";
-		print MAVG join("\t", $midpoint, $Ne, $Ne_low, $Ne_high, scalar(@bin), $S, $CV, $rough_low, $rough_high, $mean_r_sq, $mean_exp_r_sq, $r_sq_drift, $r_sq_drift_low, $r_sq_drift_high), "\n";
+		print MAVG join("\t", $midpoint, $mean_c, $Ne, $Ne_low, $Ne_high, scalar(@bin), $S, $CV, $rough_low, $rough_high, $mean_r_sq, $mean_exp_r_sq, $r_sq_drift, $r_sq_drift_low, $r_sq_drift_high), "\n";
 		
 		
 	}
