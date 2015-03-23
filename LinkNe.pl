@@ -5,7 +5,7 @@ use Getopt::Long;
 use Pod::Usage;
 use Statistics::Distributions;
 
-my $version = '1.0.1';
+my $version = '1.0.2';
 
 my $command = 'LinkNe.pl ' . join(" ", @ARGV);
 
@@ -24,7 +24,6 @@ my $save_data = '';
 my $reanalyze = '';
 my $opt_version = '';
 my $debug = '';
-my $cval = '';
 
 GetOptions(	'infile|i=s' => \$infile,
 			'outfile|o=s' => \$outfile,
@@ -39,7 +38,6 @@ GetOptions(	'infile|i=s' => \$infile,
 			'reanalyze|r' => \$reanalyze,
 			'version' => \$opt_version,
 			'debug' => \$debug,
-			'cval|l=s' => \$cval,
 );
 
 if ($opt_version) {
@@ -445,15 +443,9 @@ foreach my $pop (@{$pops}) {
 		
 		my $midpoint_c = $bin_means[$i];
 		
-		# Calculate a gamma value for the bin, where c is the midpoint or mean of the bin
-		my $gamma;
-		if ($cval eq 'mean') {
-			$gamma = ((1 - $mean_c)**2 + $mean_c**2) / (2 * $mean_c * (2 - $mean_c));
-		} elsif ($cval eq 'midpoint') {
-			$gamma = ((1 - $midpoint_c)**2 + $midpoint_c**2) / (2 * $midpoint_c * (2 - $midpoint_c));
-		} else {
-			die 'Need to specify a cval method';
-		}
+		# Calculate a gamma value for the bin, where c is the mean of the bin
+
+		my $gamma = ((1 - $mean_c)**2 + $mean_c**2) / (2 * $mean_c * (2 - $mean_c));
 		
 		# From Hill 1981 / Waples 2006
 		my $Ne = ($gamma / $r_sq_drift);
@@ -768,14 +760,7 @@ sub calc_moving_avg {
 		# Calculate a gamma value for the bin, where c is the midpoint of the bin
 		#my $gamma = ((1 - $midpoint)**2 + $midpoint**2) / (2 * $midpoint * (2 - $midpoint)); 
 		
-		my $gamma;
-		if ($cval eq 'mean') {
-			$gamma = ((1 - $mean_c)**2 + $mean_c**2) / (2 * $mean_c * (2 - $mean_c));
-		} elsif ($cval eq 'midpoint') {
-			$gamma = ((1 - $midpoint)**2 + $midpoint**2) / (2 * $midpoint * (2 - $midpoint));
-		} else {
-			die 'Need to specify a cval method';
-		}
+		my $gamma = ((1 - $mean_c)**2 + $mean_c**2) / (2 * $mean_c * (2 - $mean_c));
 		
 		# From Hill 1981 / Waples 2006
 		my $Ne = ($gamma / $r_sq_drift); 
