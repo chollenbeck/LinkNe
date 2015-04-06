@@ -5,7 +5,7 @@ use Getopt::Long;
 use Pod::Usage;
 use Statistics::Distributions;
 
-my $version = '1.0.3';
+my $version = '1.0.4';
 
 my $command = 'LinkNe.pl ' . join(" ", @ARGV);
 
@@ -16,6 +16,7 @@ my $outfile = 'Ne.out';
 my $matfile = '';
 my $binsize = 0.05;
 my $allele_cutoff = 0.05;
+my $rec_cutoff = 0;
 my $no_bias_corr = '';
 my $moving_avg = 'Ne_moving_avg.out';
 my $window_size = 0.05;
@@ -30,6 +31,7 @@ GetOptions(	'infile|i=s' => \$infile,
 			'matfile|m=s' => \$matfile,
 			'bins|b=s' => \$binsize,
 			'allele_cutoff|a=s' => \$allele_cutoff,
+			'rec_cutoff|e=s' => \$rec_cutoff,
 			'no_bias_corr|c' => \$no_bias_corr,
 			'moving_avg|v=s' => \$moving_avg,
 			'window|w=s' => \$window_size,
@@ -179,7 +181,9 @@ foreach my $pop (@{$pops}) {
 			
 			my $c = $rec_matrix[$mat_index{$pair[0]}][$mat_index{$pair[1]}];
 			next if $c eq 'NA';
+			next if $c < $rec_cutoff;
 			$c = 0.00001 if $c == 0;
+			#$c = 0.49999 if $c == 0.5;
 			$pairwise++;
 	
 			my ($shared_n, $allele_counts, $counts, $homozygotes) = get_counts($filt_loci[$y], $filt_loci[$z], $pop, \%freqs);
@@ -766,7 +770,7 @@ sub calc_moving_avg {
 		my $Ne = ($gamma / $r_sq_drift); 
 		
 		# Tenesa et al. 2007 approximation
-		# my $Ne = ((1 / $r_sq_drift) - 1) / (4 * $bin_means[$i]);
+		#my $Ne = ((1 / $r_sq_drift) - 1) / (4 * $bin_means[$i]);
 		
 		# Calculate parametric CIs based on the LDNe approach
 		
