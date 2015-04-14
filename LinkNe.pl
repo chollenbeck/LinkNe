@@ -5,7 +5,7 @@ use Getopt::Long;
 use Pod::Usage;
 use Statistics::Distributions;
 
-my $version = '1.0.4';
+my $version = '1.0.5';
 
 my $command = 'LinkNe.pl ' . join(" ", @ARGV);
 
@@ -15,10 +15,11 @@ my $infile = '';
 my $outfile = 'Ne.out';
 my $matfile = '';
 my $binsize = 0.05;
+my $timebin = '';
 my $allele_cutoff = 0.05;
 my $rec_cutoff = 0;
 my $no_bias_corr = '';
-my $moving_avg = 'Ne_moving_avg.out';
+my $moving_avg = '';
 my $window_size = 0.05;
 my $interval = 0.01;
 my $save_data = '';
@@ -30,6 +31,7 @@ GetOptions(	'infile|i=s' => \$infile,
 			'outfile|o=s' => \$outfile,
 			'matfile|m=s' => \$matfile,
 			'bins|b=s' => \$binsize,
+			'timebin|t' => \$timebin,
 			'allele_cutoff|a=s' => \$allele_cutoff,
 			'rec_cutoff|e=s' => \$rec_cutoff,
 			'no_bias_corr|c' => \$no_bias_corr,
@@ -90,34 +92,66 @@ foreach my $locus (@pop_loci) {
 	if (defined $mat_index{$locus}) {
 		push @shared_loci, $locus;
 	}
-	#print DUMP $locus, "\n";
 }
 
-#print DUMP Dumper($pops);
-#print DUMP Dumper($pop_loci);
 
-my @bins;
-my @all_bin;
-my @bin_max;
+my @bins; # The data structure that will hold the data for the regular estimates
+my @all_bin; # The data structure that will hold the data for the moving average
+my @bin_range;
+
+	
 for (my $i = 1; $i <= 0.5 / $binsize; $i++) {
 	my $binmax = $i * $binsize;
-	push @bin_max, $binmax;
-	$bins[$i - 1] = [ [],[],[],[],[] ];
+	my $binmin = $binmax - $binsize;
+	my $binmid = ($binmax + $binmin) / 2;
+	my @range = ($binmin, $binmid, $binmax);
+	push @bin_range, \@range;
 }
-#print DUMP Dumper(\@bin_max);
-#print join("\t", @bin_max), "\n";
 
-my @bin_means;
-for (my $i = 0; $i < scalar(@bin_max); $i += $binsize) {
-	my $low = $i;
-	my $high = $i + $binsize;
-	my $mean = ($low + $high) / 2;
-	if (scalar(@bin_max) == 1) {
-		push @bin_means, 0.5;
-	} else {
-		push @bin_means, $mean;
+# Combine bins based on the time period that they represent
+
+if ($timebin) {
+	my @new_bins;
+	my $prev_time = 0;
+	for (my $i = 0; $i < scalar(@bin_range); $i++) {
+		my @bin = @{$bin_range[$i]};
+		my $binmid = $bin[1];
+		my $time = 1 / (2 * $binmid); # Convert to time based on equation from Hayes et al. 2003
+		my $rounded_time;
+		if ($time =~ /(\d+)\.\d+/) {
+			$rounded_time = $1;
+		} elsif ($time =~ /^(\d+)$/) {
+			$rounded_time = $1;
+		} else {
+			die "Can't round time to nearest integer\n";
+		}
+		my $curr_time = $rounded_time;
+		if ($i == 0) { # The first bin in the array
+			$prev_time = $curr_time;
+			push @new_bins, \@bin;
+			next;
+		} else { # The subsequent bins in the array
+			if (abs($curr_time - $prev_time) < 2) {
+				# Combine the bins
+				my $prev_bin = pop(@new_bins);
+				my $new_mid = ($prev_bin->[0] + $bin[2]) / 2;
+				my @comb_bin = ($prev_bin->[0], $new_mid, $bin[2]);
+				push @new_bins, \@comb_bin;
+				$prev_time = $curr_time;
+			} else {
+				push @new_bins, \@bin;
+				$prev_time = $curr_time;
+			}
+		}
 	}
+	@bin_range = @new_bins;
+	
 }
+
+for (my $i = 0; $i < scalar(@bin_range); $i++) {
+	$bins[$i] = [ [],[],[],[],[] ];
+}
+
 
 foreach my $pop (@{$pops}) {
 	
@@ -363,12 +397,14 @@ foreach my $pop (@{$pops}) {
 				print SAV join("\t", $pair[0], $pair[1], $mean_loc_rsq, $mean_loc_exp_rsq, $nij, $Sij, $wij, $c), "\n";
 			}
 			
-			my $bin_min = 0;
 			my $binable = 0;
-			for (my $g = 0; $g < scalar(@bin_max); $g++) {
+			for (my $g = 0; $g < scalar(@bins); $g++) {
+				
+				my $bin_min = $bin_range[$g][0];
+				my $bin_max = $bin_range[$g][2];
 				
 				if ($c > $bin_min) {
-					if ($c <= $bin_max[$g]) {
+					if ($c <= $bin_max) {
 						push @{$bins[$g][0]}, $mean_loc_rsq;
 						push @{$bins[$g][1]}, $mean_loc_exp_rsq;
 						push @{$bins[$g][2]}, $nij;
@@ -382,7 +418,6 @@ foreach my $pop (@{$pops}) {
 						last;
 					}
 				}
-				$bin_min += $binsize;
 			}
 			
 			if ($binable == 0) {
@@ -445,7 +480,7 @@ foreach my $pop (@{$pops}) {
 		
 		my $r_sq_drift = $mean_r_sq - $mean_exp_r_sq;
 		
-		my $midpoint_c = $bin_means[$i];
+		my $midpoint_c = $bin_range[$i][1];
 		
 		# Calculate a gamma value for the bin, where c is the mean of the bin
 
@@ -843,6 +878,8 @@ Options:
 	 
 	 -b	<binsize>		size of bins (in Morgans) for estimating Ne
 	 
+	 -t		bin estimates by time (1 / 2c) rather than by recombination frequency
+	 
 	 -a	<allele_cutoff>		cutoff frequency for excluding rare alleles from the analysis
 	 
 	 -c		correct expected r2 values using the bias correction of Waples (2006) - recommended
@@ -879,6 +916,10 @@ Outfile
 =item B<-b, --binsize>
 
 Size of bins (in Morgans) for estimating Ne [Default: 0.05]
+
+=item B<-t, --timebin>
+
+Bin pairwise estimates of LD by generations (measured by 1 / 2c) rather than by recombination frequency (c) itself
 
 =item B<-a, --allele_cutoff>
 
