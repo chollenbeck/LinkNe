@@ -5,7 +5,7 @@ use Getopt::Long;
 use Pod::Usage;
 use Statistics::Distributions;
 
-my $version = '1.0.5';
+my $version = '1.0.7';
 
 my $command = 'LinkNe.pl ' . join(" ", @ARGV);
 
@@ -94,7 +94,6 @@ foreach my $locus (@pop_loci) {
 	}
 }
 
-
 my @bins; # The data structure that will hold the data for the regular estimates
 my @all_bin; # The data structure that will hold the data for the moving average
 my @bin_range;
@@ -152,7 +151,6 @@ for (my $i = 0; $i < scalar(@bin_range); $i++) {
 	$bins[$i] = [ [],[],[],[],[] ];
 }
 
-
 foreach my $pop (@{$pops}) {
 	
 	my %freqs;
@@ -162,7 +160,7 @@ foreach my $pop (@{$pops}) {
 	my @filt_loci;
 	foreach my $locus (@shared_loci) {
 		if (! grep($locus, @loci)) {
-			#print DUMP "Filtered: $locus\n";
+			print DUMP "Filtered: $locus\n";
 			next;
 		}
 		my ($freq, $locus_n, $locus_miss) = get_freqs($locus, $pop);
@@ -170,11 +168,13 @@ foreach my $pop (@{$pops}) {
 		#print DUMP "All freqs\n";
 		#print DUMP Dumper($freq);
 		
+		my $excluded = 0;
 		# Filter out alleles below a specified frequency cutoff
 		foreach my $allele (keys %{$freq}) {
 			if ($freq->{$allele} < $allele_cutoff) {
 				$exclude{$locus}{$allele} = 1;
-				next;
+				$excluded++;
+				#next;
 			}
 			$freqs{$locus}{$allele} = $freq->{$allele};
 		}
@@ -182,13 +182,18 @@ foreach my $pop (@{$pops}) {
 		$missing{$locus} = $locus_miss;
 		$sample_size{$locus} = $locus_n;
 		
-		#print DUMP "Filtered freqs\n";
-		print DUMP Dumper(\%freqs) if $debug;
 		
-		push @filt_loci, $locus unless scalar(keys %{$freqs{$locus}}) == 1;
+		# Skip the locus if there is only one allele after excluding low-frequency alleles
+		
+		
+		if (scalar(keys %{$freqs{$locus}}) - $excluded == 1) {
+			next;
+		}
+		
+		push @filt_loci, $locus;
 	}
 	
-	#print FREQ Dumper(\%freqs);
+	print DUMP Dumper(\%freqs) if $debug;
 	
 	# Define variables to hold values for each locus pair
 
@@ -198,6 +203,7 @@ foreach my $pop (@{$pops}) {
 	my $total_loci = scalar(@filt_loci);
 	print "$total_loci loci to test\n";
 	print LOG "Total Loci: $total_loci\n";
+	
 	# Iterate through each pair of loci
 	my $pairwise = 0;
 	my $binned = 0;
@@ -211,22 +217,34 @@ foreach my $pop (@{$pops}) {
 			
 			my @pair = ($filt_loci[$y], $filt_loci[$z]);
 			print DUMP join("\t", @pair), "\n" if $debug;
+			
 			# Look up the recombination frequency for the locus pair
 			
 			my $c = $rec_matrix[$mat_index{$pair[0]}][$mat_index{$pair[1]}];
+			
 			next if $c eq 'NA';
 			next if $c < $rec_cutoff;
 			$c = 0.00001 if $c == 0;
 			#$c = 0.49999 if $c == 0.5;
 			$pairwise++;
+			
+			my ($geno_counts, $shared_n, $geno_pos_1, $geno_pos_2, $allele_counts) = get_counts($filt_loci[$y], $filt_loci[$z], $pop, \%freqs);
+			my @counts = @$geno_counts;
+			my %geno_pos_1 = %$geno_pos_1;
+			my %geno_pos_2 = %$geno_pos_2;
+			my %allele_counts = %$allele_counts;
 	
-			my ($shared_n, $allele_counts, $counts, $homozygotes) = get_counts($filt_loci[$y], $filt_loci[$z], $pop, \%freqs);
-			die unless $shared_n > 0;
-			my @gen_counts = @$counts;
-			my %homozygotes = %{$homozygotes};
+			
+			die unless $shared_n > 0; # Trap this exception
+
 			#print DUMP "Allele counts\n";
-			#print DUMP Dumper($allele_counts);
+			#print DUMP Dumper(\@gen_counts);
 			#print DUMP Dumper(%{$counts});
+			
+			
+			my @alleles1 = sort keys %{$freqs{$pair[0]}};
+			my @alleles2 = sort keys %{$freqs{$pair[1]}};
+						
 			
 			# Calculate frequencies for alleles in shared individuals
 			
@@ -252,14 +270,14 @@ foreach my $pop (@{$pops}) {
 			
 			print DUMP Dumper(\%allele_freqs) if $debug;
 				
-			my $loc1_n = $sample_size{$pair[0]};
-			my $loc2_n = $sample_size{$pair[1]};
+			#my $loc1_n = $sample_size{$pair[0]};
+			#my $loc2_n = $sample_size{$pair[1]};
 			my $nij = (scalar(keys %{$allele_freqs{$pair[0]}}) - 1) * (scalar(keys %{$allele_freqs{$pair[1]}}) - 1);
 			my $Sij = $shared_n;
 			my $wij = $nij * $Sij**2;
 			
-			my @alleles1 = sort keys %{$allele_freqs{$pair[0]}};
-			my @alleles2 = sort keys %{$allele_freqs{$pair[1]}};
+			#my @alleles1 = sort keys %{$allele_freqs{$pair[0]}};
+			#my @alleles2 = sort keys %{$allele_freqs{$pair[1]}};
 			
 			# Iterate through all combinations of alleles between the two loci
 			
@@ -270,46 +288,45 @@ foreach my $pop (@{$pops}) {
 				}
 				for(my $j = 0; $j < scalar(@alleles2); $j++) {
 					next if $exclude{$filt_loci[$z]}{$alleles2[$j]};
-					my $hi;
-					my $hj;
-					if ($homozygotes{$pair[0]}{$alleles1[$i]}) {
-						$hi = $homozygotes{$pair[0]}{$alleles1[$i]} / $shared_n;
-					} else {
-						$hi = 0;
-					}
-					if ($homozygotes{$pair[1]}{$alleles2[$j]}) {
-						$hj = $homozygotes{$pair[1]}{$alleles2[$j]} / $shared_n;
-					} else {
-						$hj = 0;
-					}
 					
-					# Subsample the genotype counts array for the current alleles
+					# Make a 3 x 3 genotype matrix for the allele pair, collapsing all other alleles into a single allele
+
+					my @matrix = ( [0, 0, 0], [0, 0, 0], [0, 0, 0] );
 					
-					my $hom_pos_a = $i * scalar(@alleles1);
-					my $hom_pos_b = $j * scalar(@alleles2);
-					my @sub_counts;
-					foreach my $row (@gen_counts[$hom_pos_a .. $hom_pos_a + (scalar(@alleles1) - 1)]) {
-						push @sub_counts, [@$row[$hom_pos_b .. $hom_pos_b + (scalar(@alleles2) - 1)]];
-					}
-					
-					my $hets = 0;
-					for (my $k = 0; $k < scalar(@sub_counts); $k++) {
-						for (my $l = 0; $l < scalar(@{$sub_counts[0]}); $l++) {
-							if ($k == 0 && $l == 0) {
-								if ($sub_counts[$k][$l]) {
-									$hets += $sub_counts[$k][$l] * 2;
-								}
-							} elsif (($k == 0 && $l != 0) || ($k != 0 && $l == 0)) {
-								if ($sub_counts[$k][$l]) {
-									$hets += $sub_counts[$k][$l];
-								}
-							} else {
-								if ($sub_counts[$k][$l]) {
-									$hets += $sub_counts[$k][$l] / 2;
-								}
+					for (my $k = 0; $k < scalar(@counts); $k++) { # $k indexes rows (locus 1 genotypes)
+						for (my $l = 0; $l < @{$counts[0]}; $l++) { # $l indexes columns (locus 2 genotypes)
+							#my $val = $counts[$k][$l];
+							# Determine which row the value should go into
+							my $row;
+							my $geno1 = $geno_pos_1{$k};
+							if ($geno1 eq "$alleles1[$i]$alleles1[$i]") { # a homozygote
+								$row = 0;
+							} elsif (substr($geno1, 0, length($alleles1[$i])) eq $alleles1[$i] || substr($geno1, length($alleles1[$i]), length($alleles1[$i])) eq $alleles1[$i]) { # heterozygote
+								$row = 1;
+							} else { # the allele is not in the genotype
+								$row = 2;
 							}
-						}
+							# Determine which column the value should go into
+							my $col;
+							my $geno2 = $geno_pos_2{$l};
+							if ($geno2 eq "$alleles2[$j]$alleles2[$j]") { # a homozygote
+								$col = 0;
+							} elsif (substr($geno2, 0, length($alleles2[$j])) eq $alleles2[$j] || substr($geno2, length($alleles2[$j]), length($alleles2[$j])) eq $alleles2[$j]) { # heterozygote
+								$col = 1;
+							} else { # the allele is not in the genotype
+								$col = 2;
+							}
+							#print COUNT "Placing value in coordinates ($row, $col)\n";
+							$matrix[$row][$col] += $counts[$k][$l];
+														
+						} 
 					}
+					
+					
+					my $hi = ($matrix[0][0] + $matrix[0][1] + $matrix[0][2]) / $shared_n;
+					my $hj = ($matrix[0][0] + $matrix[1][0] + $matrix[2][0]) / $shared_n;
+					my $hets = (2 * $matrix[0][0]) + $matrix[0][1] + $matrix[1][0] + ($matrix[1][1] / 2);
+							
 					
 					my $p = $allele_counts->{$pair[0]}{$alleles1[$i]} / (2 * $shared_n);
 					my $q = $allele_counts->{$pair[1]}{$alleles2[$j]} / (2 * $shared_n);
@@ -333,8 +350,9 @@ foreach my $pop (@{$pops}) {
 					# is exactly 0.5 and there are no corresponding homozygotes). This happens sometimes with small sample sizes.
 					# This traps the error and skips the allele pair
 					
-					my $r;
+					my $r = '';
 					eval { $r = $D_hat / ( sqrt( (($p*(1-$p))+($hi-$p**2)) * (($q*(1-$q))+($hj-$q**2)) ) ) };
+					$r = 1 if $r > 1 || $r < -1;
 					
 					next if $@;
 					
@@ -396,6 +414,11 @@ foreach my $pop (@{$pops}) {
 			if ($save_data) {
 				print SAV join("\t", $pair[0], $pair[1], $mean_loc_rsq, $mean_loc_exp_rsq, $nij, $Sij, $wij, $c), "\n";
 			}
+			if ($debug) {	
+				my $locus_rsq_drift = $mean_loc_rsq - $mean_loc_exp_rsq;
+				print DUMP "Mean Locus r^2: $mean_loc_rsq\n";
+				print DUMP "Mean Locus r^2-drift: $locus_rsq_drift\n";
+			}
 			
 			my $binable = 0;
 			for (my $g = 0; $g < scalar(@bins); $g++) {
@@ -423,12 +446,8 @@ foreach my $pop (@{$pops}) {
 			if ($binable == 0) {
 				#print DUMP "Unable to bin: $pair[0], $pair[1]\n";
 				#print DUMP "c: $c\n";
-				die;
+				die "Locus pair unable to be binned\n";
 			}
-			
-			#push @nijs, $nij;
-			#push @Sijs, $Sij;
-			#push @wijs, $wij;
 
 		}		
 	}
@@ -449,11 +468,6 @@ foreach my $pop (@{$pops}) {
 		
 		my $S = $N / $N_over_S;
 		
-		#foreach my $nij (@{$bins[$i][2]}) {
-		#	$N += $nij;
-		#}
-		
-		#print "Calculating for bin $i\n";
 		my $total_W;
 		my $total_weighted_r_sq;
 		my $total_weighted_exp_r_sq;
@@ -597,7 +611,7 @@ sub get_freqs {
 	my %allele_count;
 	foreach my $ind (keys %pop) {
 		my @alleles = @{$pop{$ind}{$locus}};
-		if ($alleles[0] eq '000' || $alleles[1] eq '000') {
+		if ($alleles[0] eq '000' || $alleles[1] eq '000') { # This should be updated to account for the two allele case
 			$loc_miss++;
 			next;
 		}
@@ -619,112 +633,91 @@ sub get_counts {
 	my %pop = %{$_[2]};
 	my %freqs = %{$_[3]};
 	
-	
 	my @loci = ($locus1, $locus2);
 
 	my @alleles1 = sort keys %{$freqs{$locus1}};
 	my @alleles2 = sort keys %{$freqs{$locus2}};
 	
-	#print DUMP "Alleles\n";
-	#print DUMP "@alleles1\n";
-	#print DUMP "@alleles2\n";
+	my $num_gts_1 = (scalar(@alleles1) * (1 + scalar(@alleles1))) / 2;
+	my $num_gts_2 = (scalar(@alleles2) * (1 + scalar(@alleles2))) / 2;
 	
+	# Assign each allele a number, for sorting purposes
 	
-	# Set up a hash to record the counts of each allele
-	my %counts;
+	my %allele_1_id;
+	my %allele_2_id;
 	for(my $i = 0; $i < scalar(@alleles1); $i++) {
-		for(my $j = $i; $j < scalar(@alleles1); $j++) {
-			for(my $k = 0; $k < scalar(@alleles2); $k++) {
-				for(my $l = $k; $l < scalar(@alleles2); $l++) {
-					$counts{"$alleles1[$i]$alleles1[$j]"}{"$alleles2[$k]$alleles2[$l]"} = 0;
-					$counts{"$alleles1[$j]$alleles1[$i]"}{"$alleles2[$l]$alleles2[$k]"} = 0;
-				}
-			}
-		}
+		$allele_1_id{$alleles1[$i]} = $i;
+	}
+	for(my $i = 0; $i < scalar(@alleles2); $i++) {
+		$allele_2_id{$alleles2[$i]} = $i;
 	}
 	
-	my $shared_n;
-	my %allele_counts;
-	my %homozygotes;
-	foreach my $ind (keys %pop)	{
-		my @alleles_1 = sort @{$pop{$ind}{$locus1}};
-		my @alleles_2 = sort @{$pop{$ind}{$locus2}};
-		next if $alleles_1[0] eq '000' || $alleles_2[0] eq '000';
-		foreach my $allele (@alleles_1) {
-			$allele_counts{$locus1}{$allele}++;
-		}
-		foreach my $allele (@alleles_2) {
-			$allele_counts{$locus2}{$allele}++;
-		}
-		$shared_n++;
-		if ($alleles_1[0] eq $alleles_1[1] && $alleles_2[0] eq $alleles_2[1]) {
-			$counts{"$alleles_1[0]$alleles_1[1]"}{"$alleles_2[0]$alleles_2[1]"}++;
-			$homozygotes{$locus1}{$alleles_1[0]}++;
-			$homozygotes{$locus2}{$alleles_2[0]}++;
-			next;
-		}
-		if ($alleles_1[0] eq $alleles_1[1] && $alleles_2[0] ne $alleles_2[1]) {
-			$counts{"$alleles_1[0]$alleles_1[1]"}{"$alleles_2[0]$alleles_2[1]"}++;
-			$counts{"$alleles_1[0]$alleles_1[1]"}{"$alleles_2[1]$alleles_2[0]"}++;
-			$homozygotes{$locus1}{$alleles_1[0]}++;
-			next;
-		}
-		if ($alleles_1[0] ne $alleles_1[1] && $alleles_2[0] eq $alleles_2[1]) {
-			$counts{"$alleles_1[0]$alleles_1[1]"}{"$alleles_2[0]$alleles_2[1]"}++;
-			$counts{"$alleles_1[1]$alleles_1[0]"}{"$alleles_2[0]$alleles_2[1]"}++;
-			$homozygotes{$locus2}{$alleles_2[0]}++;
-			next;
-		}
-		if ($alleles_1[0] ne $alleles_1[1] && $alleles_2[0] ne $alleles_2[1]) {
-			$counts{"$alleles_1[0]$alleles_1[1]"}{"$alleles_2[0]$alleles_2[1]"}++;
-			$counts{"$alleles_1[0]$alleles_1[1]"}{"$alleles_2[1]$alleles_2[0]"}++;
-			$counts{"$alleles_1[1]$alleles_1[0]"}{"$alleles_2[0]$alleles_2[1]"}++;
-			$counts{"$alleles_1[1]$alleles_1[0]"}{"$alleles_2[1]$alleles_2[0]"}++;
-			next;
-		}
-	}
-	#print DUMP Dumper(\%counts);
-	#print DUMP Dumper(\%allele_counts);
-	#print DUMP Dumper(\%homozygotes);
-	
-	my @gtas;
-	foreach my $allele (@alleles1) {
-		next if $allele eq '000';
-		next unless $allele_counts{$locus1}{$allele};
-		push @gtas, $allele . $allele;
-		foreach my $allele2 (@alleles1) {
-			next if $allele2 eq '000';
-			next unless $allele_counts{$locus1}{$allele2};
-			next if $allele eq $allele2;
-			push @gtas, $allele . $allele2;
-		}
-	}
-	my @gtbs;
-	foreach my $allele (@alleles2) {
-		next if $allele eq '000';
-		next unless $allele_counts{$locus2}{$allele};
-		push @gtbs, $allele . $allele;
-		foreach my $allele2 (@alleles2) {
-			next if $allele2 eq '000';
-			next unless $allele_counts{$locus2}{$allele2};
-			next if $allele eq $allele2;
-			push @gtbs, $allele . $allele2;
-		}
-	}
-	
-	# print DUMP join("\t", "GTAS", @gtas), "\n";
-	# print DUMP join("\t", "GTBS", @gtbs), "\n";
+	# Set up an empty matrix to record genotype counts
 	
 	my @counts;
-	for(my $i = 0; $i < scalar(@gtas); $i++) {
-		for(my $j = 0; $j < scalar(@gtbs); $j++) {
-			$counts[$i][$j] = $counts{$gtas[$i]}{$gtbs[$j]};
+	for(my $i = 0; $i < $num_gts_1; $i++) {
+		for(my $j = 0; $j < $num_gts_2; $j++) {
+			$counts[$i][$j] = 0;
 		}
 	}
-	#print DUMP Dumper(\@counts);
 	
-	return ($shared_n, \%allele_counts, \@counts, \%homozygotes);
-}
+	# Create a hash that specifies the position of each genotype in the matrix
+	my %geno_pos_1;
+	my %geno_pos_2;
+	my $pos = 0;
+	for(my $i = 0; $i < scalar(@alleles1); $i++) {
+		for(my $j = $i; $j < scalar(@alleles1); $j++) {
+			$geno_pos_1{"$alleles1[$i]$alleles1[$j]"} = $pos;
+			$pos++;
+		}
+	}
+	$pos = 0;
+	for(my $i = 0; $i < scalar(@alleles2); $i++) {
+		for(my $j = $i; $j < scalar(@alleles2); $j++) {
+			$geno_pos_2{"$alleles2[$i]$alleles2[$j]"} = $pos;
+			$pos++;
+		}
+	}
+	
+	# Iterate through individuals, counting genotypes
+	
+	my %allele_counts;
+	my $shared_n = 0;
+	foreach my $ind (keys %pop)	{
+		next if $pop{$ind}{$locus1}[0] eq '000' || $pop{$ind}{$locus2}[0] eq '000';
+		
+		my @alleles_1 = sort { $allele_1_id{$a} <=> $allele_1_id{$b} } @{$pop{$ind}{$locus1}};
+		my @alleles_2 = sort { $allele_2_id{$a} <=> $allele_2_id{$b} } @{$pop{$ind}{$locus2}};
+		
+		#next if $alleles_1[0] eq '000' || $alleles_2[0] eq '000';
+		
+		my $geno1 = "$alleles_1[0]$alleles_1[1]";
+		my $geno2 = "$alleles_2[0]$alleles_2[1]";
+		
+		# Update the allele counts for the two loci
+		$allele_counts{$locus1}{$alleles_1[0]}++;
+		$allele_counts{$locus1}{$alleles_1[1]}++;
+		$allele_counts{$locus2}{$alleles_2[0]}++;
+		$allele_counts{$locus2}{$alleles_2[1]}++;
+		
+		# Find the number of the row in the matrix where the genotype of the first locus is counted
+		my $row = $geno_pos_1{$geno1};
+		
+		# Find the number of the column in the matrix where the genotype of the second locus is counted
+		my $col = $geno_pos_2{$geno2};
+		
+		$counts[$row][$col]++;
+		$shared_n++;
+	}
+	
+
+	
+	%geno_pos_1 = reverse %geno_pos_1;
+	%geno_pos_2 = reverse %geno_pos_2;
+	
+	return \@counts, $shared_n, \%geno_pos_1, \%geno_pos_2, \%allele_counts;
+	
+}	
 
 sub calc_moving_avg {
 	my @data = @{$_[0]};
