@@ -5,7 +5,7 @@ use Getopt::Long;
 use Pod::Usage;
 use Statistics::Distributions;
 
-my $version = '1.0.7';
+my $version = '1.0.8';
 
 my $command = 'LinkNe.pl ' . join(" ", @ARGV);
 
@@ -54,6 +54,9 @@ if ($reanalyze) {
 
 
 open(OUT, ">", $outfile) or die $!;
+print OUT join("\t", "MIDPOINT_C", "MEAN_C", "NE", "PARA_95_LOW", "PARA_95_HIGH", "PAIRWISE", "S", "CV", "EMP_95_LOW", "EMP_95_HIGH", "MEAN_R_SQ", "MEAN_EXP_R_SQ", "R_SQ_DRIFT", "R_SQ_DRIFT_LOW", "R_SQ_DRIFT_HIGH"), "\n";
+
+
 open(R2, ">", $outfile . '.R2.log') or die $!;
 open(LOG, ">", $outfile . '.log') or die $!;
 
@@ -352,9 +355,11 @@ foreach my $pop (@{$pops}) {
 					
 					my $r = '';
 					eval { $r = $D_hat / ( sqrt( (($p*(1-$p))+($hi-$p**2)) * (($q*(1-$q))+($hj-$q**2)) ) ) };
+					next if $@;
+					
 					$r = 1 if $r > 1 || $r < -1;
 					
-					next if $@;
+					
 					
 					# if ($@) {
 						
@@ -522,8 +527,8 @@ foreach my $pop (@{$pops}) {
 		
 		my $CV = (1 + ($Ne / ($gamma * $S))) * sqrt(2 / $N);
 		my $SD = $CV * $Ne;
-		my $rough_low = $Ne - (2 * $SD);
-		my $rough_high = $Ne + (2 * $SD);
+		my $rough_low = $Ne - (1.98 * $SD);
+		my $rough_high = $Ne + (1.98 * $SD);
 		
 		print OUT join("\t", $midpoint_c, $mean_c, $Ne, $Ne_low, $Ne_high, scalar(@{$bins[$i][0]}), $S, $CV, $rough_low, $rough_high, $mean_r_sq, $mean_exp_r_sq, $r_sq_drift, $r_sq_drift_low, $r_sq_drift_high), "\n";
 		#print OUT join("\t", $mean_c, $Ne, $Ne_low, $Ne_high, scalar(@{$bins[$i][0]}), $S, $CV, $rough_low, $rough_high, $mean_r_sq, $mean_exp_r_sq, $r_sq_drift, $r_sq_drift_low, $r_sq_drift_high), "\n";
@@ -875,6 +880,8 @@ Options:
 	 
 	 -a	<allele_cutoff>		cutoff frequency for excluding rare alleles from the analysis
 	 
+	 -e	<rec_cutoff>		exclude locus pairs below a specified recombination faction 
+	 
 	 -c		correct expected r2 values using the bias correction of Waples (2006) - recommended
 	 
 	 -v		compute a moving average for effective size relative to recombination rate
@@ -918,9 +925,13 @@ Bin pairwise estimates of LD by generations (measured by 1 / 2c) rather than by 
 
 Cutoff frequency for excluding rare alleles from the analysis [Default: 0.05]
 
-=item B<-c, --correct_bias>
+=item B<-e, --rec_cutoff>
 
-Correct expected r2 values using the bias correction of Waples (2006) - recommended
+exclude locus pairs below a specified recombination faction [Default: No cutoff]
+
+=item B<-c, --no_bias_corr>
+
+Turn off correction of expected r2 values using the bias correction of Waples (2006) - not recommended except for experimental use
 
 =item B<-v, --moving_avg>
 
@@ -938,9 +949,6 @@ Distance the sliding window moves for each calculation (in Morgans) [Default: 0.
 
 Saves relevant pairwise data to a file for later recalculation of the moving average
 
-=item B<-r, --recalculate>
-
-Recalculates the moving average based on previously saved data in order to avoid the overhead of recalculating all pairwise values
 
 =back
 

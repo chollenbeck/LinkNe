@@ -23,6 +23,9 @@ Options:
     -a, --allele_cutoff
             Cutoff frequency for excluding rare alleles from the analysis
             [Default: 0.05]
+			
+	-e, --rec_cutoff
+			Exclude locus pairs below a specified recombination faction [Default: No cutoff]
 
     -c, --correct_bias
             Correct expected r2 values using the bias correction of Waples
