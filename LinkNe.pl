@@ -603,9 +603,9 @@ sub read_genepop {
 			next if $width == 0;
 			my $allele1 = substr($genotype, 0, $width);
 			my $allele2 = substr($genotype, $width, $width);
-			if (! $mat_index{$loci[$locus_no]} && ! $matfile) {
+			if (! $mat_index{$loci[$locus_no]}) {
 				$locus_no++;
-				print "Skipping\n";
+				#print "Skipping\n";
 				next;
 			}
 			$pops[$pop_counter]{$ind}{$loci[$locus_no]} = [$allele1, $allele2];
@@ -939,6 +939,8 @@ perl LinkNe.pl -i <inputfile> -m <recombination_matrix> -o <outfile> -b <binsize
 Options:
      -i	<inputfile>		input genepop file
 
+	 -map	<linkage_map>		tab separated linkage map
+
 	 -m	<recombination_matrix>		matrix of recombination frequencies for loci
 
 	 -o	<outfile>		name of output file
@@ -973,6 +975,19 @@ Options:
 =item B<-i, --infile>
 
 Genepop input file
+
+=item B<-map>
+
+Linkage map in tab-separated format:
+<locus>	<chromosome>	<position>
+
+Example:
+locus	chromosome	position
+loc1	1	5.0
+loc2	1	15.0
+loc3	2	50.5
+
+Position values should be in centiMorgans
 
 =item B<-m, --matfile>
 
