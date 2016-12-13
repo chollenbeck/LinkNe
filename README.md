@@ -3,22 +3,27 @@
 
 ### Synopsis
 
-Usage:
-     perl LinkNe.pl -i <inputfile> -m <recombination_matrix> [options]
+
+    perl LinkNe.pl -i input_file -map linkage_map [options]
 
 
      Options:
 
          -i, --infile
-                 Genepop input file - currently supports three-character alleles
+                 Genepop input file - currently only supports three-character alleles where '000000' indicates a missing genotype
 
-         -map    Linkage map in tab-separated format: <locus> <chromosome>
-                 <position>
+         -map    Linkage map in tab-separated format (with header):
 
-                 Example: locus chromosome position loc1 1 5.0 loc2 1 15.0 loc3 2
-                 50.5
+                <locus> <chromosome>  <position>
 
-                 Position values should be in centiMorgans
+                Example:
+
+                locus chromosome  position
+                loc1  1 5.0
+                loc2  1 15.0
+                loc3  2 50.5
+
+                Position values should be in centiMorgans
 
          -m, --matfile
                  Matrix of recombination frequencies for loci
