@@ -603,7 +603,7 @@ sub read_genepop {
 			next if $width == 0;
 			my $allele1 = substr($genotype, 0, $width);
 			my $allele2 = substr($genotype, $width, $width);
-			if (! $mat_index{$loci[$locus_no]}) {
+			unless (exists $mat_index{$loci[$locus_no]}) {
 				$locus_no++;
 				#print "Skipping\n";
 				next;
