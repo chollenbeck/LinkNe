@@ -17,7 +17,7 @@ Requirements:
 
 2) Recombination rate estimates for at least a subset of the genetic markers. Two formats are allowed:
 
-    - A genetic map with the following format (note that map positions are in cM and the header is required):
+- A genetic map with the following format (note that map positions are in cM and the header is required):
 
 ```
     locus chromosome  position
@@ -26,7 +26,7 @@ Requirements:
     loc3  2 50.5
 ```
 
-    - A square matrix of recombination rates (note that recombination rates are in Morgans). Example (equivalent to the map above):
+- A square matrix of recombination rates (note that recombination rates are in Morgans). Example (equivalent to the map above):
 
 ```
     loc1  0 0.05 0.50
