@@ -442,7 +442,7 @@ foreach my $pop (@{$pops}) {
 				my $bin_max = $bin_range[$g][2];
 
 				if ($c > $bin_min) {
-					if ($c <= $bin_max) {
+					if ($c <= $bin_max + 0.000001) {
 						push @{$bins[$g][0]}, $mean_loc_rsq;
 						push @{$bins[$g][1]}, $mean_loc_exp_rsq;
 						push @{$bins[$g][2]}, $nij;
