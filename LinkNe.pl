@@ -5,7 +5,7 @@ use Getopt::Long;
 use Pod::Usage;
 use Statistics::Distributions;
 
-my $version = '1.0.9';
+my $version = '1.0.10';
 
 my $command = 'LinkNe.pl ' . join(" ", @ARGV);
 
@@ -111,6 +111,12 @@ my @bins; # The data structure that will hold the data for the regular estimates
 my @all_bin; # The data structure that will hold the data for the moving average
 my @bin_range;
 
+
+my $bin_mod = (0.5 * 100000) % int($binsize * 100000);
+if ($bin_mod != 0) {
+    print "Bin size will not divide evenly into 0.5. Try another bin size with the -b flag.\n";
+    die;
+}
 
 for (my $i = 1; $i <= 0.5 / $binsize; $i++) {
 	my $binmax = $i * $binsize;
@@ -459,8 +465,9 @@ foreach my $pop (@{$pops}) {
 			}
 
 			if ($binable == 0) {
-				#print DUMP "Unable to bin: $pair[0], $pair[1]\n";
-				#print DUMP "c: $c\n";
+				print DUMP "Unable to bin: $pair[0], $pair[1]\n";
+				print DUMP "c: $c\n";
+				print DUMP Dumper(\@bin_range), "\n";
 				die "Locus pair unable to be binned\n";
 			}
 
